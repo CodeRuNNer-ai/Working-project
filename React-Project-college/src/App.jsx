@@ -2,7 +2,7 @@ import React from "react";
 import { Routes, Route } from "react-router-dom";
 import Navbar from "./Header/Navbar";
 import Section2 from "./body/Section2";
-import Quiz from "./Pages/Pricing/Quiz";
+import Quiz from "./Pages/Quiz";
 import Loging from "./Pages/Login/Loging";
 import Getstarted from "./Pages/getstarted";
 import Profile from "./Pages/Profile";
