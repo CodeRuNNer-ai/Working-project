@@ -8,21 +8,18 @@ const History = () => {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
+        const token = localStorage.getItem("token");
         const res = await axios.get("/api/transcript/history", {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`
+            Authorization: `Bearer ${token}`
           }
         });
 
-        console.log("API DATA:", res.data);
-
-        // ✅ Always safe
         const data = Array.isArray(res.data)
           ? res.data
           : res.data.notes || [];
 
         setNotes(data);
-
       } catch (error) {
         console.error("Error fetching history:", error);
         setNotes([]);
@@ -35,57 +32,65 @@ const History = () => {
   }, []);
 
   return (
-    <div className="p-6 text-white">
-      <h2 className="text-2xl mb-4">History</h2>
+    <div className="min-h-screen bg-black text-white p-6">
+      <h2 className="text-3xl font-bold mb-6">History</h2>
 
       {loading ? (
-        <p>Loading...</p>
+        <p className="text-gray-400">Loading...</p>
       ) : notes.length === 0 ? (
-        <p>No history found</p>
+        <div className="text-center mt-20">
+          <p className="text-gray-400 text-lg">No history found</p>
+          <p className="text-gray-600 text-sm mt-2">
+            Generate your first PDF notes to see them here
+          </p>
+        </div>
       ) : (
-        notes.map((note) => (
-          <div
-            key={note._id}
-            className="bg-gray-800 p-4 mb-3 rounded-xl"
-          >
-            <h3 className="text-lg font-bold">
-              {note.title || "Untitled Video"}
-            </h3>
+        <div className="grid gap-4 max-w-3xl mx-auto">
+          {notes.map((note) => (
+            <div
+              key={note._id}
+              className="bg-white/10 border border-white/20 backdrop-blur-xl p-5 rounded-2xl"
+            >
+              <h3 className="text-lg font-semibold mb-1">
+                {note.title || "Untitled Video"}
+              </h3>
 
-            <p className="text-sm text-gray-400">
-              {note.createdAt
-                ? new Date(note.createdAt).toLocaleString()
-                : "No date"}
-            </p>
+              <p className="text-sm text-purple-400 mb-1 break-all">
+                {note.videoUrl}
+              </p>
 
-            <div className="mt-2 flex gap-3">
-              {note.pdfUrl ? (
-                <>
-                  <a
-                    href={note.pdfUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="bg-blue-500 px-3 py-1 rounded"
-                  >
-                    View PDF
-                  </a>
+              <p className="text-xs text-gray-500 mb-4">
+                {note.createdAt
+                  ? new Date(note.createdAt).toLocaleString()
+                  : "No date"}
+              </p>
 
-                  <a
-                    href={note.pdfUrl}
-                    download
-                    className="bg-green-500 px-3 py-1 rounded"
-                  >
-                    Download
-                  </a>
-                </>
-              ) : (
-                <span className="text-red-400">
-                  PDF not available
-                </span>
-              )}
+              <div className="flex gap-3">
+                {note.pdfUrl ? (
+                  <>
+                    <a
+                      href={note.pdfUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                    >
+                      View PDF
+                    </a>
+                    <a
+                      href={note.pdfUrl}
+                      download
+                      className="bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                    >
+                      Download
+                    </a>
+                  </>
+                ) : (
+                  <span className="text-red-400 text-sm">PDF not available</span>
+                )}
+              </div>
             </div>
-          </div>
-        ))
+          ))}
+        </div>
       )}
     </div>
   );

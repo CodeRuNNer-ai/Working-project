@@ -19,6 +19,27 @@ const Section2 = () => {
   const [error, setError] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
 
+  const saveToHistory = async (videoUrl, pdfUrl) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      await fetch("/api/transcript/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          videoUrl,
+          pdfUrl,
+          title: `Notes - ${new Date().toLocaleDateString()}`
+        })
+      });
+    } catch (e) {
+      console.log("History save failed:", e);
+    }
+  };
+
   const handleGenerate = async () => {
     setError("");
     setTranscript("");
@@ -79,6 +100,7 @@ const Section2 = () => {
 
         if (n8nData.pdf.startsWith("http")) {
           setPdfUrl(n8nData.pdf);
+          await saveToHistory(url, n8nData.pdf);
         } else {
           const byteChars = atob(n8nData.pdf);
           const byteArray = new Uint8Array(byteChars.length);

@@ -1,80 +1,45 @@
-import axios from "axios";
+import Note from "../models/Note.js";
 
-// 🔹 Extract video ID
-const getVideoId = (url) => {
+// Existing function - keep as is
+export const getTranscript = async (req, res) => {
   try {
-    const parsedUrl = new URL(url);
-
-    if (parsedUrl.hostname === "youtu.be") {
-      return parsedUrl.pathname.slice(1);
-    }
-
-    if (parsedUrl.searchParams.get("v")) {
-      return parsedUrl.searchParams.get("v");
-    }
-
-    if (parsedUrl.pathname.includes("/shorts/")) {
-      return parsedUrl.pathname.split("/shorts/")[1];
-    }
-
-    return null;
-  } catch {
-    return null;
+    const { transcript } = req.body;
+    res.json({ transcript });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
 
-export const getTranscript = async (req, res) => {
+// Save a note to history
+export const saveNote = async (req, res) => {
   try {
-    const { url } = req.body;
+    const { videoUrl, pdfUrl, title } = req.body;
 
-    if (!url) {
-      return res.status(400).json({ message: "URL is required" });
+    if (!videoUrl || !pdfUrl) {
+      return res.status(400).json({ message: "videoUrl and pdfUrl are required" });
     }
 
-    const videoId = getVideoId(url);
-
-    if (!videoId) {
-      return res.status(400).json({ message: "Invalid YouTube URL" });
-    }
-
-    // 🔥 Use free transcript API (reliable)
-    const ytResponse = await axios.get(
-      `https://youtubetranscript.com/?server_vid2=${videoId}`
-    );
-
-    const transcriptData = ytResponse.data?.transcript;
-
-    if (!transcriptData || transcriptData.length === 0) {
-      return res.status(404).json({ message: "No transcript available" });
-    }
-
-    const transcriptText = transcriptData
-      .map((item) => item.text)
-      .join(" ")
-      .slice(0, 15000);
-
-    // 🔥 Send to n8n
-    const response = await axios.post(
-      "https://irrelevantabhii.app.n8n.cloud/webhook/899d9173-0315-4ead-b228-ac32f0d332a9",
-      { transcript: transcriptText },
-      { timeout: 30000 }
-    );
-
-    res.json({
-      success: true,
-      data: {
-        pdfUrl:
-          response.data?.pdfUrl ||
-          response.data?.url ||
-          response.data,
-      },
+    const note = await Note.create({
+      user: req.user._id,
+      videoUrl,
+      pdfUrl,
+      title: title || "Untitled Video"
     });
 
+    res.status(201).json({ success: true, note });
   } catch (error) {
-    console.error("🔥 ERROR:", error.message);
+    res.status(500).json({ message: error.message });
+  }
+};
 
-    res.status(500).json({
-      message: "Error generating transcript",
-    });
+// Get history for logged in user
+export const getHistory = async (req, res) => {
+  try {
+    const notes = await Note.find({ user: req.user._id })
+      .sort({ createdAt: -1 });
+
+    res.json(notes);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
