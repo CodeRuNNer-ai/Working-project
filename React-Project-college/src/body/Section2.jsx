@@ -18,8 +18,11 @@ const Section2 = () => {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
+  const [pdfBlob, setPdfBlob] = useState(null);
+  const [pdfFilename, setPdfFilename] = useState("notes.pdf");
+  const [pdfObjectUrl, setPdfObjectUrl] = useState("");
 
-  const saveToHistory = async (videoUrl, pdfUrl) => {
+  const saveToHistory = async (videoUrl, pdfLink) => {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
@@ -27,13 +30,13 @@ const Section2 = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           videoUrl,
-          pdfUrl,
-          title: `Notes - ${new Date().toLocaleDateString()}`
-        })
+          pdfUrl: pdfLink,
+          title: `Notes - ${new Date().toLocaleDateString()}`,
+        }),
       });
     } catch (e) {
       console.log("History save failed:", e);
@@ -45,6 +48,14 @@ const Section2 = () => {
     setTranscript("");
     setStatus("");
     setPdfUrl("");
+    setPdfBlob(null);
+    setPdfFilename("notes.pdf");
+
+    // Revoke previous object URL to avoid memory leaks
+    if (pdfObjectUrl) {
+      URL.revokeObjectURL(pdfObjectUrl);
+      setPdfObjectUrl("");
+    }
 
     const videoId = extractVideoId(url);
     if (!videoId) {
@@ -99,21 +110,22 @@ const Section2 = () => {
         setStatus("downloading");
 
         if (n8nData.pdf.startsWith("http")) {
+          // n8n returned a hosted URL
           setPdfUrl(n8nData.pdf);
           await saveToHistory(url, n8nData.pdf);
         } else {
+          // n8n returned base64 PDF — convert to blob for preview
           const byteChars = atob(n8nData.pdf);
           const byteArray = new Uint8Array(byteChars.length);
           for (let i = 0; i < byteChars.length; i++) {
             byteArray[i] = byteChars.charCodeAt(i);
           }
           const blob = new Blob([byteArray], { type: "application/pdf" });
-          const downloadUrl = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = downloadUrl;
-          link.download = n8nData.filename || "notes.pdf";
-          link.click();
-          URL.revokeObjectURL(downloadUrl);
+          const objUrl = URL.createObjectURL(blob);
+          setPdfBlob(blob);
+          setPdfObjectUrl(objUrl);
+          setPdfFilename(n8nData.filename || "notes.pdf");
+          await saveToHistory(url, objUrl);
         }
 
         setStatus("done");
@@ -128,15 +140,37 @@ const Section2 = () => {
     }
   };
 
+  const handleDownload = () => {
+    if (!pdfBlob) return;
+    const link = document.createElement("a");
+    link.href = pdfObjectUrl;
+    link.download = pdfFilename;
+    link.click();
+  };
+
+  const handleReset = () => {
+    if (pdfObjectUrl) {
+      URL.revokeObjectURL(pdfObjectUrl);
+    }
+    setUrl("");
+    setTranscript("");
+    setStatus("");
+    setError("");
+    setPdfUrl("");
+    setPdfBlob(null);
+    setPdfFilename("notes.pdf");
+    setPdfObjectUrl("");
+  };
+
   const statusMessages = {
     fetching: "Fetching transcript...",
-    sending: "Sending to n8n for PDF generation...",
+    sending: "Sending to AI for PDF generation...",
     downloading: "PDF ready!",
     done: "Your PDF is ready!",
   };
 
   return (
-    <div className="relative w-full h-screen bg-black overflow-hidden">
+    <div className="relative w-full min-h-screen bg-black overflow-hidden">
       <div className="absolute inset-0 z-0">
         <Orb
           hoverIntensity={1}
@@ -147,14 +181,15 @@ const Section2 = () => {
         />
       </div>
 
-      <div className="relative z-10 flex flex-col items-center justify-center h-full px-4 text-white">
+      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4 py-12 text-white">
         <h1 className="text-4xl md:text-5xl font-bold mb-2 text-center">
           Paste YouTube Link
         </h1>
         <p className="text-gray-400 mb-8 text-center text-sm">
-          We will extract the transcript and generate a PDF for you
+          We will extract the transcript and generate structured notes as a PDF
         </p>
 
+        {/* Input Bar */}
         <div className="w-full max-w-2xl backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-3 flex items-center gap-3 shadow-xl">
           <input
             type="text"
@@ -173,30 +208,71 @@ const Section2 = () => {
           </button>
         </div>
 
+        {/* Status Message */}
         {status && statusMessages[status] && (
           <p className="mt-4 text-purple-300 text-sm animate-pulse">
             {statusMessages[status]}
           </p>
         )}
 
-        {status === "done" && pdfUrl && (
-          <a
-            href={pdfUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-xl font-semibold text-sm text-white"
-          >
-            Open PDF Notes
-          </a>
-        )}
-
+        {/* Error Message */}
         {error && (
           <p className="mt-4 text-red-400 text-sm max-w-2xl text-center">
-            {error}
+            ⚠️ {error}
           </p>
         )}
 
-        {transcript && (
+        {/* PDF Preview + Actions — shown when done */}
+        {status === "done" && (pdfUrl || pdfObjectUrl) && (
+          <div className="mt-6 w-full max-w-2xl backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-5 flex flex-col gap-4">
+            <p className="text-green-400 font-semibold text-sm">
+              ✅ Your notes are ready!
+            </p>
+
+            {/* PDF iframe Preview */}
+            <iframe
+              src={pdfUrl || pdfObjectUrl}
+              className="w-full h-72 rounded-xl border border-white/20 bg-white"
+              title="PDF Notes Preview"
+            />
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Open in new tab (URL-based) */}
+              {pdfUrl && (
+                <a
+                  href={pdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 text-center bg-purple-600 hover:bg-purple-700 px-4 py-3 rounded-xl font-semibold text-sm text-white transition-all duration-200"
+                >
+                  Open PDF ↗
+                </a>
+              )}
+
+              {/* Download (blob-based) */}
+              {pdfBlob && (
+                <button
+                  onClick={handleDownload}
+                  className="flex-1 bg-purple-600 hover:bg-purple-700 px-4 py-3 rounded-xl font-semibold text-sm text-white transition-all duration-200"
+                >
+                  ⬇ Download PDF
+                </button>
+              )}
+
+              {/* Generate Another */}
+              <button
+                onClick={handleReset}
+                className="flex-1 bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-3 rounded-xl font-semibold text-sm text-white transition-all duration-200"
+              >
+                Generate Another
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Transcript Preview */}
+        {transcript && status !== "done" && (
           <div className="mt-6 w-full max-w-2xl">
             <p className="text-xs text-gray-400 mb-2 uppercase tracking-widest">
               Transcript Preview
