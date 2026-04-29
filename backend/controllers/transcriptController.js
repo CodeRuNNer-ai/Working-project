@@ -20,7 +20,7 @@ export const saveNote = async (req, res) => {
     }
 
     const note = await Note.create({
-      user: req.user._id,
+      user: req.user.id,  // ✅ fixed: was req.user._id
       videoUrl,
       pdfUrl,
       title: title || "Untitled Video"
@@ -35,10 +35,31 @@ export const saveNote = async (req, res) => {
 // Get history for logged in user
 export const getHistory = async (req, res) => {
   try {
-    const notes = await Note.find({ user: req.user._id })
+    const notes = await Note.find({ user: req.user.id })  // ✅ fixed: was req.user._id
       .sort({ createdAt: -1 });
 
     res.json(notes);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Delete a note
+export const deleteNote = async (req, res) => {
+  try {
+    const note = await Note.findById(req.params.id);
+
+    if (!note) {
+      return res.status(404).json({ message: "Note not found" });
+    }
+
+    // Make sure user owns this note
+    if (note.user.toString() !== req.user.id.toString()) {  // ✅ fixed: was req.user._id
+      return res.status(401).json({ message: "Not authorized" });
+    }
+
+    await note.deleteOne();
+    res.status(200).json({ success: true, message: "Note deleted" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

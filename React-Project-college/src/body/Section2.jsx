@@ -11,6 +11,18 @@ const extractVideoId = (youtubeUrl) => {
   return match ? match[1] : null;
 };
 
+// Clean transcript — remove Hindi, fix special chars that break JSON, limit length
+const cleanTranscript = (text) => {
+  return text
+    .replace(/[\u0900-\u097F]/g, '')   // remove Devanagari (Hindi) characters
+    .replace(/["""''`]/g, "'")          // replace smart/curly quotes with simple apostrophe
+    .replace(/\\/g, ' ')               // remove backslashes
+    .replace(/[\r\n]+/g, ' ')          // remove line breaks
+    .replace(/\s+/g, ' ')              // collapse extra spaces
+    .trim()
+    .slice(0, 12000);                  // limit to 12000 chars to avoid token limits
+};
+
 const Section2 = () => {
   const [url, setUrl] = useState("");
   const [transcript, setTranscript] = useState("");
@@ -87,7 +99,14 @@ const Section2 = () => {
         throw new Error("No transcript found. The video may not have captions enabled.");
       }
 
-      setTranscript(fullText);
+      // Clean transcript — remove Hindi chars, fix special characters, limit length
+      const cleanedText = cleanTranscript(fullText);
+
+      if (!cleanedText) {
+        throw new Error("Transcript appears to be in Hindi only. English captions are required.");
+      }
+
+      setTranscript(cleanedText);
       setStatus("sending");
 
       const n8nRes = await fetch(N8N_WEBHOOK_URL, {
@@ -96,7 +115,7 @@ const Section2 = () => {
         body: JSON.stringify({
           videoId,
           videoUrl: url,
-          transcript: fullText,
+          transcript: cleanedText,
         }),
       });
 
@@ -104,7 +123,18 @@ const Section2 = () => {
         throw new Error(`n8n error (${n8nRes.status}). PDF generation failed.`);
       }
 
-      const n8nData = await n8nRes.json();
+      const rawText = await n8nRes.text();
+
+      if (!rawText || rawText.trim() === "") {
+        throw new Error("n8n returned an empty response. Check your n8n workflow.");
+      }
+
+      let n8nData;
+      try {
+        n8nData = JSON.parse(rawText);
+      } catch (e) {
+        throw new Error("n8n response is not valid JSON. Check your n8n workflow output.");
+      }
 
       if (n8nData.success && n8nData.pdf) {
         setStatus("downloading");
@@ -125,7 +155,9 @@ const Section2 = () => {
           setPdfBlob(blob);
           setPdfObjectUrl(objUrl);
           setPdfFilename(n8nData.filename || "notes.pdf");
-          await saveToHistory(url, objUrl);
+
+          // ✅ Save actual base64 data URL so History page can open/download it
+          await saveToHistory(url, `data:application/pdf;base64,${n8nData.pdf}`);
         }
 
         setStatus("done");
